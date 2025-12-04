@@ -379,8 +379,39 @@ CROSS JOIN category AS c;
 /* 45. Encuentra los actores que han participado en películas de la categoría
 'Action'. */
 
+SELECT DISTINCT CONCAT(a.first_name, ' ', a.last_name) AS "Actor_Acción"
+FROM actor AS a 
+JOIN film_actor AS fa ON a.actor_id = fa.actor_id 
+JOIN film_category AS fc ON fa.film_id = fc.film_id 
+JOIN category AS c ON fc.category_id = c.category_id
+WHERE c.name = 'Action'
+ORDER BY "Actor_Acción"
+
+--O
+
+SELECT CONCAT(a.first_name, ' ', a.last_name) AS "Actor_Acción"
+FROM actor AS a
+WHERE a.actor_id IN (						--Encuentro los nombres de los actores cuyo ID está en la lista de abajo
+				SELECT fa.actor_id AS "ID_Actor"
+				FROM film_actor AS fa 
+				WHERE fa.film_id IN (						--Encuentro el ID de los actores en películas cuyo film_id esté en la lista de IDs de abajo 
+								SELECT fc.film_id 
+								FROM film_category AS fc
+								WHERE fc.category_id = (				--Encuentro el ID de las películas cuya categoría coincide con el category_id "ID_Acción"
+												SELECT c.category_id AS "ID_Acción"
+												FROM category AS c 
+												WHERE c.name = 'Action'))) --Encuentro el ID de la categoría ACTION
+ORDER BY "Actor_Acción";
+
+
 -- 46. Encuentra todos los actores que no han participado en películas.
 
+SELECT	CONCAT(a.first_name, ' ', a.last_name) AS "Actor",
+		COUNT(fa.film_id) AS "Num_Películas"
+FROM actor AS a 
+LEFT JOIN film_actor AS fa ON a.actor_id = fa.actor_id
+WHERE fa.film_id IS NULL
+GROUP BY "Actor"
 
 
 /* 47. Selecciona el nombre de los actores y la cantidad de películas en las
@@ -396,6 +427,18 @@ ORDER BY "Num_Películas" DESC;
 /* 48. Crea una vista llamada “actor_num_peliculasˮ que muestre los nombres
 de los actores y el número de películas en las que han participado. */
 
+CREATE OR REPLACE VIEW actor_num_peliculas AS
+SELECT CONCAT(a.first_name, ' ', a.last_name) AS "Nombre",
+       COUNT(fa.film_id) AS "Total_Peliculas"
+FROM actor AS a
+JOIN film_actor AS fa ON a.actor_id = fa.actor_id
+GROUP BY a.actor_id;
+
+--Para ver los resultados:
+
+SELECT * 
+FROM actor_num_peliculas;
+
 -- 49. Calcula el número total de alquileres realizados por cada cliente.
 
 SELECT	CONCAT(c.first_name, ' ', c.last_name) AS "Nombre_cliente",
@@ -406,12 +449,51 @@ GROUP BY "Nombre_cliente"
 ORDER BY "Nombre_cliente" ASC;
 
 -- 50. Calcula la duración total de las películas en la categoría 'Action'.
+SELECT SUM(f.length) AS "Duración_total_Action"
+FROM film AS f 
+JOIN film_category AS fc ON f.film_id = fc.film_id 
+JOIN category AS c ON fc.category_id = c.category_id 
+WHERE c."name" = 'Action'
 
 /* 51. Crea una tabla temporal llamada “cliente_rentas_temporalˮ para
 almacenar el total de alquileres por cliente. */
+DROP TABLE IF EXISTS cliente_rentas_temporal; --Esto es para eliminarla en caso de que ya exista(si ya se ha ejecutado el código antes)
+
+CREATE TEMPORARY TABLE cliente_rentas_temporal AS
+SELECT	r.customer_id AS "ID_Cliente",
+		COUNT(r.rental_id) AS "Num_Alquileres"
+FROM rental AS r 
+GROUP BY r.customer_id;
+
+SELECT * 
+FROM cliente_rentas_temporal; --Para ver el resultado
 
 /* 52. Crea una tabla temporal llamada “peliculas_alquiladasˮ que almacene las
 películas que han sido alquiladas al menos 10 veces. */
+
+/*Aclaración: no me queda claro si aquí tengo que usar el TEMPORARY TABLE, o si tengo que usar una sibquery para "crear"
+ una tabla temporal*/
+ 
+
+DROP TABLE IF EXISTS peliculas_alquiladas;
+
+CREATE TEMPORARY TABLE peliculas_alquiladas AS
+SELECT	f.title AS "Titulo",
+    	COUNT(r.rental_id) AS "Total_Alquileres"
+FROM film AS f
+JOIN inventory AS i ON f.film_id = i.film_id
+JOIN rental AS r ON i.inventory_id = r.inventory_id
+GROUP BY f.title
+HAVING COUNT(r.rental_id) >= 10;
+
+SELECT * 
+FROM peliculas_alquiladas 
+ORDER BY "Total_Alquileres" DESC;
+
+--O:
+
+
+	
 
 /* 53. Encuentra el título de las películas que han sido alquiladas por el cliente
 con el nombre ‘Tammy Sandersʼ y que aún no se han devuelto. Ordena
@@ -435,6 +517,12 @@ de 8 días. */
 /* 58. Encuentra el título de todas las películas que son de la misma categoría
 que ‘Animationʼ. */
 
+SELECT title AS "Título"
+FROM film AS f 
+JOIN film_category AS fc ON f.film_id = fc.film_id 
+JOIN category AS c ON fc.category_id = c.category_id 
+WHERE c.name = 'Animation';
+
 /* 59. Encuentra los nombres de las películas que tienen la misma duración
 que la película con el título ‘Dancing Feverʼ. Ordena los resultados
 alfabéticamente por título de película. */
@@ -450,8 +538,25 @@ muestra el nombre de la categoría junto con el recuento de alquileres. */
 /* 63. Obtén todas las combinaciones posibles de trabajadores con las tiendas
 que tenemos. */
 
+SELECT	s.store_id ,
+		s2.staff_id 
+FROM store AS s 
+CROSS JOIN staff AS s2 ;
+
 /* 64. Encuentra la cantidad total de películas alquiladas por cada cliente y
 muestra el ID del cliente, su nombre y apellido junto con la cantidad de
 películas alquiladas. */
+
+
+SELECT	CONCAT(c.first_name, ' ', c.last_name) AS "Nombre_Cliente",
+		COUNT(r.rental_id) AS "Num_Alquileres"
+FROM customer AS c 
+JOIN rental AS r ON c.customer_id = r.customer_id 
+GROUP BY "Nombre_Cliente"
+ORDER BY "Num_Alquileres" DESC;
+
+
+
+
 
 
