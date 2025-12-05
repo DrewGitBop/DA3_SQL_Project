@@ -471,8 +471,13 @@ FROM cliente_rentas_temporal; --Para ver el resultado
 /* 52. Crea una tabla temporal llamada “peliculas_alquiladasˮ que almacene las
 películas que han sido alquiladas al menos 10 veces. */
 
-/*Aclaración: no me queda claro si aquí tengo que usar el TEMPORARY TABLE, o si tengo que usar una sibquery para "crear"
- una tabla temporal*/
+/*PREGUNTA PARA QUIEN CORRIJA ESTO: 
+ * ¿En qué momento es relevante poner comillas a los alias que le doy a las cosas
+ * y en qué momento no lo es?
+ * Abajo tengo aliases con y sin comillas, lo único que veo que cambia es el  color.
+ * Mi  duda es, sobretodo, cuando hablamos de darle alias a las subconsultas o a tablas temporales:
+ * ¿Cuándo lo hago? ¿Cuándo no? Mientras no les dé el mismo nombre que a una columna de la BBDD, ¿importa?
+ */
  
 
 DROP TABLE IF EXISTS peliculas_alquiladas;
@@ -490,29 +495,205 @@ SELECT *
 FROM peliculas_alquiladas 
 ORDER BY "Total_Alquileres" DESC;
 
---O:
+--O metemos esto en el sándwich de arriba 
 
 
+SELECT	f.title AS "Título",
+		"Alquileres_por_ID" AS "Total_Alquiladas"
+FROM	film AS f ,
+		(
+			SELECT	"ID_Película",
+					SUM("Alquileres") AS "Alquileres_por_ID"
+			FROM	(
+						SELECT (
+									SELECT count(r.rental_id) AS "Num_Alquileres" 
+									FROM rental AS r
+									WHERE r.inventory_id = i.inventory_id
+								) AS "Alquileres",
+								
+						i.film_id AS "ID_Película"
+						FROM inventory AS i 
+						GROUP BY i.inventory_id
+					
+					) AS Lista_Alquileres
+					
+			GROUP BY "ID_Película"
+			HAVING SUM("Alquileres") >= 10
+		) AS películas_alquiladas
+WHERE f.film_id = "ID_Película"
+ORDER BY "Total_Alquiladas" DESC;
+	
+
+---O usamos WITH:
+
+WITH "películas_alquiladas" AS 
+(
+	SELECT	"ID_Película",
+		SUM("Alquileres") AS "Alquileres_por_ID"
+		FROM(
+			SELECT (
+				SELECT count(r.rental_id) AS "Num_Alquileres" 
+				FROM rental AS r
+				WHERE r.inventory_id = i.inventory_id
+				) AS "Alquileres",
+					
+			i.film_id AS "ID_Película"
+			FROM inventory AS i 
+			GROUP BY i.inventory_id
+							
+			) AS Lista_Alquileres
+							
+		GROUP BY "ID_Película"
+		HAVING SUM("Alquileres") >= 10
+)
+SELECT	f.title AS "Título",
+		pa."Alquileres_por_ID" AS "Total_Alquiladas"
+FROM "películas_alquiladas" AS pa,
+	 film AS f 
+WHERE pa."ID_Película" = f.film_id
+ORDER BY "Total_Alquiladas" DESC;
 	
 
 /* 53. Encuentra el título de las películas que han sido alquiladas por el cliente
 con el nombre ‘Tammy Sandersʼ y que aún no se han devuelto. Ordena
 los resultados alfabéticamente por título de película. */
 
+SELECT	f.title AS "Título"
+FROM customer AS c 
+JOIN rental AS r ON c.customer_id = r.customer_id 
+JOIN inventory AS i ON r.inventory_id = i.inventory_id 
+JOIN film AS f ON i.film_id = f.film_id 
+WHERE	c.first_name ILIKE 'Tammy' AND c.last_name ILIKE 'Sanders'
+		AND r.return_date IS NULL
+ORDER BY "Título" ASC;
+
+--O ()
+
+SELECT	f.title AS "Título" 
+FROM rental AS r 
+JOIN inventory AS i ON r.inventory_id = i.inventory_id 
+JOIN film AS f ON i.film_id = f.film_id 
+WHERE r.return_date IS NULL 
+AND r.customer_id = 
+		(
+		SELECT customer_id
+	    FROM customer
+	    WHERE first_name ILIKE 'Tammy'
+	    AND last_name ILIKE 'Sanders'
+		)
+ORDER BY f.title ASC;
+
+
 /* 54. Encuentra los nombres de los actores que han actuado en al menos una
 película que pertenece a la categoría ‘Sci-Fiʼ. Ordena los resultados
 alfabéticamente por apellido. */
+
+SELECT DISTINCT a.last_name || ', ' || a.first_name AS "Actor"
+FROM actor AS a 
+JOIN film_actor AS fa ON a.actor_id = fa.actor_id 
+JOIN film_category AS fc ON fa.film_id = fc.film_id 
+WHERE fc.category_id = 
+		(
+		SELECT c.category_id 
+		FROM category AS c 
+		WHERE c."name" ILIKE 'Sci-Fi' 
+		)
+ORDER BY "Actor" ASC;
 
 /* 55. Encuentra el nombre y apellido de los actores que han actuado en
 películas que se alquilaron después de que la película ‘Spartacus
 Cheaperʼ se alquilara por primera vez. Ordena los resultados
 alfabéticamente por apellido. */
 
+WITH Spartacus_PrimerALQ AS 
+(
+    SELECT MIN(r.rental_date) AS "Fecha_Inicio"
+    FROM rental AS r
+    JOIN inventory AS i ON r.inventory_id = i.inventory_id
+    WHERE i.film_id = 
+    	(
+        SELECT film_id 
+        FROM film 
+        WHERE title ILIKE 'SPARTACUS CHEAPER'
+    	)
+)
+SELECT DISTINCT a.last_name || ', ' || a.first_name AS "Actor"
+FROM actor AS a
+JOIN film_actor AS fa ON a.actor_id = fa.actor_id
+JOIN inventory AS i ON fa.film_id = i.film_id 
+JOIN rental AS r ON i.inventory_id = r.inventory_id
+WHERE r.rental_date > 
+		(
+		SELECT "Fecha_Inicio" 
+		FROM Spartacus_PrimerALQ
+		)
+ORDER BY "Actor";
+
+--O (es más efectiva porque no se hacen JOINS dentro de la CTE, pero es más difícil de leer)
+
+WITH Spartacus_Launch_Date AS 
+(
+    SELECT MIN(r.rental_date) AS "Fecha_Inicio"
+    FROM rental AS r
+    WHERE r.inventory_id IN 
+    	(
+        SELECT i.inventory_id 
+        FROM inventory AS i 
+        WHERE i.film_id = 
+        	(
+            SELECT f.film_id 
+            FROM film AS f 
+            WHERE f.title ILIKE 'SPARTACUS CHEAPER'
+        	)
+    	)
+)
+SELECT DISTINCT a.last_name || ', ' || a.first_name AS "Actor"
+FROM actor AS a
+JOIN film_actor AS fa ON a.actor_id = fa.actor_id
+JOIN inventory AS i ON fa.film_id = i.film_id 
+JOIN rental AS r ON i.inventory_id = r.inventory_id
+WHERE r.rental_date > 
+		(
+		SELECT "Fecha_Inicio" 
+		FROM Spartacus_Launch_Date
+		)
+ORDER BY "Actor" ASC;
+
+
 /* 56. Encuentra el nombre y apellido de los actores que no han actuado en
 ninguna película de la categoría ‘Musicʼ. */
 
+WITH Actores_en_Música AS 
+(
+	SELECT fa.actor_id
+	FROM film_actor AS fa
+	JOIN film_category AS fc ON fa.film_id = fc.film_id
+	WHERE fc.category_id = 
+		(
+		SELECT	c.category_id
+		FROM category AS c
+		WHERE c."name" ILIKE 'Music'
+		)
+)
+SELECT a.first_name || ' ' || a.last_name AS "Actor"
+FROM actor AS a
+WHERE a.actor_id NOT IN 
+	(
+	SELECT actor_id 
+	FROM Actores_en_Música
+	)
+ORDER BY "Actor" ASC;
+
 /* 57. Encuentra el título de todas las películas que fueron alquiladas por más
 de 8 días. */
+
+SELECT DISTINCT f.title AS "Título"
+FROM rental AS r
+JOIN inventory AS i ON r.inventory_id = i.inventory_id
+JOIN film AS f ON i.film_id = f.film_id
+WHERE r.return_date IS NOT NULL
+  AND (r.return_date - r.rental_date) > INTERVAL '8 days'
+ORDER BY f.title ASC;
 
 /* 58. Encuentra el título de todas las películas que son de la misma categoría
 que ‘Animationʼ. */
@@ -527,13 +708,66 @@ WHERE c.name = 'Animation';
 que la película con el título ‘Dancing Feverʼ. Ordena los resultados
 alfabéticamente por título de película. */
 
+SELECT f.title AS "Título"
+FROM film AS f
+WHERE f.length =
+	(SELECT	length AS "Duración"
+	FROM film AS f2 
+	WHERE f2.title ILIKE 'Dancing Fever')
+	AND f.title NOT ILIKE 'Dancing Fever'
+ORDER BY "Título" ASC;
+
 /* 60. Encuentra los nombres de los clientes que han alquilado al menos 7
 películas distintas. Ordena los resultados alfabéticamente por apellido. */
+
+SELECT c.last_name || ', ' || c.first_name AS "Cliente"
+FROM customer AS c
+JOIN rental AS r ON c.customer_id = r.customer_id
+JOIN inventory AS i ON r.inventory_id = i.inventory_id
+GROUP BY c.customer_id
+HAVING COUNT(DISTINCT i.film_id) >= 7
+ORDER BY "Cliente" ASC;
 
 /* 61. Encuentra la cantidad total de películas alquiladas por categoría y
 muestra el nombre de la categoría junto con el recuento de alquileres. */
 
+SELECT 	c.name AS "Categoría", 
+		COUNT(r.rental_id) AS "Num_Alquileres"
+FROM category c
+JOIN film_category fc ON c.category_id = fc.category_id 
+JOIN inventory i ON fc.film_id = i.film_id
+JOIN rental r ON i.inventory_id = r.inventory_id
+GROUP BY "Categoría";
+
+
 -- 62. Encuentra el número de películas por categoría estrenadas en 2006.
+
+SELECT Es."ID_Categoría" AS "Categoría",
+		count("Título") AS "Num_Estrenos" 
+FROM (
+	SELECT	(SELECT fc.category_id
+			FROM film_category AS fc
+			WHERE f.film_id = fc.film_id) AS "ID_Categoría",
+			f.title AS "Título"		
+	FROM film AS f 
+	WHERE f.release_year = 2006
+	) AS Es
+GROUP BY Es."ID_Categoría";
+
+--Para verlo con nombres de categoría:
+
+SELECT c.name AS "Categoría",
+		count("Título") AS "Num_Estrenos" 
+FROM (
+	SELECT	(SELECT fc.category_id
+			FROM film_category AS fc
+			WHERE f.film_id = fc.film_id) AS "ID_Categoría",
+			f.title AS "Título"		
+	FROM film AS f 
+	WHERE f.release_year = 2006
+	) AS Es
+JOIN category as c ON Es."ID_Categoría" = c.category_id
+GROUP BY c.name;
 
 /* 63. Obtén todas las combinaciones posibles de trabajadores con las tiendas
 que tenemos. */
